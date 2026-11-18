@@ -60,7 +60,7 @@ public class FreeAimPlugin : BaseUnityPlugin
     internal static ConfigEntry<StanceKeyMode> StanceMode;
     internal static ConfigEntry<float> LowReadyPitch;
     internal static ConfigEntry<float> HighReadyPitch;
-    internal static ConfigEntry<float> HighReadyLeftCm;
+    internal static ConfigEntry<float> HighReadyRightCm;
     internal static ConfigEntry<float> HighReadyDownCm;
     internal static ConfigEntry<float> ReadyBodyFollow;
     internal static ConfigEntry<float> LowReadyRecovery;
@@ -251,8 +251,8 @@ public class FreeAimPlugin : BaseUnityPlugin
             "低准备时 T 相对视角中心向下偏的角度。", ConfigText.Range(0f, 50f));
         HighReadyPitch = t.Bind(stance, "High ready pitch (deg)", 25f, cStance, "高准备上抬角（度）",
             "高准备时 T 相对视角中心向上偏的角度。", ConfigText.Range(0f, 50f));
-        HighReadyLeftCm = t.Bind(stance, "Right shoulder high ready left of centre (cm)", 10f, cStance, "右肩高准备枪身靠左（厘米）",
-            "右肩高准备时，枪身移到视角中心左侧的目标距离。0 为关闭横向调整，实际偏移受双臂可达范围限制。",
+        HighReadyRightCm = t.Bind(stance, "Right shoulder high ready right shift (cm)", 6f, cStance, "右肩高准备枪身右移（厘米）",
+            "右肩高准备时，枪和双手从未横移的位置往右挪的距离。0 保留原位置，实际偏移受双臂可达范围限制。",
             ConfigText.Range(0f, 25f));
         HighReadyDownCm = t.Bind(stance, "Right shoulder high ready drop (cm)", 18f, cStance, "右肩高准备双手下移（厘米）",
             "右肩高准备时，枪和双手一起下移的距离。实际偏移受双臂可达范围限制。",
@@ -557,7 +557,7 @@ public class FreeAimPlugin : BaseUnityPlugin
                       $"target yaw:{target.x:0.0}° pitch:{-target.y:0.0}°\n" +
                       $"camera↔muzzle angle: {angle:0.0}°   aiming:{pwa.IsAiming}  sprint:{player.MovementContext.IsSprintEnabled}\n" +
                       $"stance: {ReadyStance.Current}{(ReadyStance.Suspended ? " (paused)" : "")}  exhausted:{ReadyStance.Exhausted}  pose:{ReadyStance.PoseWeight:0.00}  A follow:x{ReadyStance.BodyFollowMultiplier:0.00}  " +
-                      $"arm stamina:{player.Physical.HandsStamina.Current:0.0}  high left/down:{-HighReadyPlacement.OffsetCm.x:0.0}/{-HighReadyPlacement.OffsetCm.y:0.0}cm  " +
+                      $"arm stamina:{player.Physical.HandsStamina.Current:0.0}  high right/down:{HighReadyPlacement.OffsetCm.x:0.0}/{-HighReadyPlacement.OffsetCm.y:0.0}cm  " +
                       $"variant:{(ReadyStance.Centred ? "centred" : "normal")}  left shoulder:{ReadyStance.LeftBlend:0.00} left pose:{ReadyStance.LeftPoseWeight:0.00}  centre shift:{ReadyStance.CentreShift * 100f:0.0}cm  clear:{StanceClearance.Applied * 100f:0.0}/{StanceClearance.Need * 100f:0.0}cm ({StanceClearance.Boxes} parts)\n" +
                       $"game sway (deg, P+ = down)  {SwayProbe.Source.Format()}\n" +
                       $"muzzle − free aim (deg)     {SwayProbe.Muzzle.Format()}\n" +

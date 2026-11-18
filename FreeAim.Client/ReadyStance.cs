@@ -496,7 +496,7 @@ internal static class ReadyStance
     /// rebuilds the weapon from the third-person frame in ShiftWeaponRoot and would remap a PWA-pass pose
     /// (the 0.0.7 failure). The game stores its left-shoulder smoothing state before returning, so this
     /// postfix does not feed back into the next frame.
-    /// Right shoulder high ready: lower the grips and move the raised gun left before hand IK.
+    /// Right shoulder high ready: lower the grips and move the raised gun right before hand IK.
     /// Both shoulders: the sideways centring slide. During the PWA pass the arms rig still sits where
     /// last frame's MouseLook put it, so a correction measured against the camera there is off by one
     /// frame of player movement and jitters while strafing (the 0.0.9 failure).
@@ -536,7 +536,7 @@ internal static class ReadyStance
             : 0f;
         if (highWeight > 0f)
         {
-            HighReadyPlacement.Apply(player, root, cam, root.TransformPoint(hands.RotationCenter), highWeight);
+            HighReadyPlacement.Apply(player, root, cam, highWeight);
         }
         if (baseWeight <= 0f)
         {

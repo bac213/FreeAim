@@ -5,7 +5,7 @@ using UnityEngine;
 
 namespace FreeAim.Client;
 
-/// <summary>Lower both grips and place the raised gun to the left of the view.</summary>
+/// <summary>Lower both grips and move the raised gun to the right.</summary>
 internal static class HighReadyPlacement
 {
     private static readonly AccessTools.FieldRef<Player, LimbIK[]> Limbs =
@@ -21,7 +21,7 @@ internal static class HighReadyPlacement
 
     // Shift the whole weapon before the native hand solve. Both hands keep their original grips
     // and both elbows use EFT's normal bend planes. The camera and weapon rotation stay put.
-    internal static void Apply(Player player, Transform root, Transform cam, Vector3 pivot, float weight)
+    internal static void Apply(Player player, Transform root, Transform cam, float weight)
     {
         LimbIK[] limbs = Limbs(player);
         if (limbs == null || limbs.Length < 2 || player.LeftHandInteractionTarget != null)
@@ -29,11 +29,8 @@ internal static class HighReadyPlacement
             return;
         }
 
-        float left = FreeAimPlugin.HighReadyLeftCm.Value * 0.01f;
-        float down = FreeAimPlugin.HighReadyDownCm.Value * 0.01f;
-        float lateral = Vector3.Dot(pivot - cam.position, cam.right);
-        float x = left > 0f ? Mathf.Min(0f, -left - lateral) * weight : 0f;
-        float y = -down * weight;
+        float x = FreeAimPlugin.HighReadyRightCm.Value * 0.01f * weight;
+        float y = -FreeAimPlugin.HighReadyDownCm.Value * 0.01f * weight;
         Vector3 offset = cam.right * x + cam.up * y;
         float move = offset.magnitude;
         if (move < 0.0001f)
