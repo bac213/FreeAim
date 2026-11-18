@@ -57,6 +57,9 @@ internal static class ReadyStance
             ? rate * FreeAimPlugin.LowReadyRecovery.Value
             : rate;
 
+    internal static bool LowReadyActive => Current == ReadyPose.Low && _requested == ReadyPose.Low && !Suspended
+        && Time.frameCount - _stanceFrame <= 1 && FreeAimPlugin.StanceEnabled.Value && PointedReadyEnabled;
+
     private static bool PointedReadyEnabled => FreeAimPlugin.Enabled.Value && FreeAimPlugin.Mode.Value == AimMode.Deadzone;
 
     /// <summary>Engaged, but the hands are busy (reload etc.): pose eased out, no drain, resumes afterwards.</summary>

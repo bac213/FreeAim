@@ -63,6 +63,7 @@ public class FreeAimPlugin : BaseUnityPlugin
     internal static ConfigEntry<float> HighReadyForwardCm;
     internal static ConfigEntry<float> ReadyBodyFollow;
     internal static ConfigEntry<float> LowReadyRecovery;
+    internal static ConfigEntry<float> LowReadyWalkSpeed;
     internal static ConfigEntry<float> StanceRaiseTime;
     internal static ConfigEntry<float> StanceCant;
     internal static ConfigEntry<Vector3> StanceOffset;
@@ -255,6 +256,9 @@ public class FreeAimPlugin : BaseUnityPlugin
             "高、低准备时 A 追 V 的速度和最高转速倍率。", ConfigText.Range(1f, 2f));
         LowReadyRecovery = t.Bind(stance, "Low ready arm recovery (x)", 1.5f, cStance, "低准备上肢恢复倍率",
             "低准备时的自然恢复倍率。仍要等游戏原有的恢复冷却结束。", ConfigText.Range(1f, 3f));
+        LowReadyWalkSpeed = t.Bind(stance, "Low ready walk speed (x)", 1.10f, cStance, "低准备步行速度倍率",
+            "低准备姿态的步行移速倍率，1.10 表示加快 10%。开镜、冲刺或离开低准备时取消。",
+            ConfigText.Range(1f, 1.3f));
         StanceRaiseTime = t.Bind(stance, "Raise time (s)", 0.45f, cStance, "举枪时间（秒）",
             "参考枪进入和退出据枪姿态所需的时间。按武器缩放：重、长、人机差的枪更慢（0.6–1.8 倍）。",
             ConfigText.Range(0.05f, 2f));
@@ -429,6 +433,7 @@ public class FreeAimPlugin : BaseUnityPlugin
             }
 
             ArmRecoveryPatch.Install(harmony);
+            LowReadyWalkPatch.Install(harmony);
 
             var shift = AccessTools.Method(typeof(PlayerBones), nameof(PlayerBones.ShiftWeaponRoot));
             if (shift == null)
