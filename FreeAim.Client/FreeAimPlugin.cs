@@ -271,7 +271,7 @@ public class FreeAimPlugin : BaseUnityPlugin
             "参考枪退出低准备或从低准备直接开镜时的抬枪时间，按武器缩放。数值越大，抬枪越慢。",
             ConfigText.Range(0.05f, 2f));
         ClearEnabled = t.Bind(stance, "Keep centre clear", true, cStance, "避开屏幕中心",
-            "据枪时按枪的实际外形（瞄具、支架、导轨的高度）把枪往下放，直到不挡住屏幕中心。只平移，枪管方向不变。");
+            "据枪时按枪在静态姿势下的外形计算下放量，让瞄具和配件避开屏幕中心。保留正常的呼吸起伏。");
         ClearAngle = t.Bind(stance, "Clear angle (deg)", 3f, cStance, "中心留空（度）",
             "屏幕中心周围留空的角度：枪的任何部分都要低于中心这么多度。",
             ConfigText.Range(0f, 15f));
@@ -469,7 +469,8 @@ public class FreeAimPlugin : BaseUnityPlugin
     }
 
     /// <summary>Body pass, after MouseLook placed the arms rig and before hand IK (local player only).</summary>
-    private static void ShiftWeaponRootPostfix(PlayerBones __instance, EPointOfView pv, float leftStanceCurveValue)
+    private static void ShiftWeaponRootPostfix(PlayerBones __instance, EPointOfView pv, float leftStanceCurveValue,
+        float positionCacheValue, float thirdPersonAuthority, bool inSprint, bool isAnimatedInteraction, bool isLeftHandUsing)
     {
         if (pv != EPointOfView.FirstPerson)
         {
@@ -480,7 +481,12 @@ public class FreeAimPlugin : BaseUnityPlugin
         {
             return;
         }
-        ReadyStance.ApplyBodyPass(player, leftStanceCurveValue);
+        // Match the position blend in ShiftWeaponRoot: the third-person root does not contain HandsPosition.
+        float remap = leftStanceCurveValue >= 1f && !inSprint ? 1f
+            : positionCacheValue > 0f ? positionCacheValue
+            : isAnimatedInteraction || isLeftHandUsing ? thirdPersonAuthority
+            : Mathf.Max(leftStanceCurveValue, thirdPersonAuthority);
+        ReadyStance.ApplyBodyPass(player, leftStanceCurveValue, 1f - Mathf.Clamp01(remap));
     }
 
     internal static Player GetLocalPlayer()

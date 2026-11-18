@@ -506,7 +506,7 @@ internal static class ReadyStance
     /// (LateTransformations), so Cam's local transform is last frame's, but its parent was already moved
     /// this frame and the hip-fire camera target does not depend on the weapon.
     /// </summary>
-    internal static void ApplyBodyPass(Player player, float leftStanceCurve)
+    internal static void ApplyBodyPass(Player player, float leftStanceCurve, float proceduralPositionWeight)
     {
         CentreShift = 0f;
         LeftPoseWeight = 0f;
@@ -582,8 +582,8 @@ internal static class ReadyStance
             ApplyCentring(pwa, fc, root, cam, fireport, weight);
         }
 
-        // last: lower the gun until the screen centre is clear (measures the final pose of this frame)
-        StanceClearance.Apply(pwa, root, cam, baseWeight, Time.deltaTime);
+        // Last: measure clearance from a stable reference built from this pose and lower the live weapon.
+        StanceClearance.Apply(pwa, root, cam, baseWeight, proceduralPositionWeight, Time.deltaTime);
     }
 
     private static void ApplyCentring(ProceduralWeaponAnimation pwa, Player.FirearmController fc, Transform root, Transform cam,
