@@ -25,7 +25,7 @@ public enum AimMode
 /// beyond it the view can only turn as fast as the body. Excess input is dropped.</item>
 /// <item>A (body): yaw follows V with a limited turn rate (weapon inertia, pose, overweight, legs); pitch = V.
 /// Body sway D (the game's breath/step/motion/shake spring, rerouted) moves A.</item>
-/// <item>T (gun target) = V + lead O. Turning adds (lead gain - 1) x the view turn to O, so the gun leads the
+/// <item>T (gun target) = V + lead O + ready pitch. Turning adds (lead gain - 1) x the view turn to O, so the gun leads the
 /// view. Part of O fades quickly, the rest stays; after the idle delay without mouse input it recentres.
 /// The ready stance, ADS and sprint pull O to 0.</item>
 /// <item>R (muzzle) = arm path + sway path. Arm: T is smoothed first (time tau_s: gentle start and stop), then a
@@ -60,6 +60,7 @@ internal static class AimModel
     internal static float Carry;          // share of the view motion the shoulder carries at once
     internal static bool Active;          // model running (local player, gun in hands, plain movement state)
     internal static Vector2 Lead => _leadKeep + _leadFast;
+    internal static Vector2 TargetOffset => Lead + new Vector2(0f, ReadyStance.ReadyPitch); // T - V
     /// <summary>ADS blend 0..1 following the game's own camera-to-scope weight (model output fades with it).</summary>
     internal static float Ads => _adsBlend;
 
@@ -267,10 +268,11 @@ internal static class AimModel
         }
 
         // ---- body (A): yaw follows the view with a limited turn rate
-        BodyTurnLimit = TurnLimit(player, mc);
+        float follow = ReadyStance.BodyFollowMultiplier;
+        BodyTurnLimit = TurnLimit(player, mc) * follow;
         float rel = -BodyYaw;
-        float desired = Mathf.Clamp(rel / Mathf.Max(0.02f, FreeAimPlugin.BodyFollowTime.Value), -BodyTurnLimit, BodyTurnLimit);
-        BodyRate += (desired - BodyRate) * (1f - Mathf.Exp(-dt / BodyRateSmoothing));
+        float desired = Mathf.Clamp(rel * follow / Mathf.Max(0.02f, FreeAimPlugin.BodyFollowTime.Value), -BodyTurnLimit, BodyTurnLimit);
+        BodyRate += (desired - BodyRate) * (1f - Mathf.Exp(-dt * follow / BodyRateSmoothing));
         float bodyStep = BodyRate * dt;
         if (Mathf.Abs(bodyStep) > Mathf.Abs(rel) && Mathf.Sign(bodyStep) == Mathf.Sign(rel))
         {
@@ -298,7 +300,7 @@ internal static class AimModel
         float stanceW = ReadyStance.StanceWeight;
         Sag = FreeAimPlugin.HipSag.Value * WeaponProfile.SagScale
               * (1f + FreeAimPlugin.SagFatigue.Value * (1f - WeaponProfile.ArmFraction));
-        Vector2 aim = Lead;
+        Vector2 aim = TargetOffset;
         Vector2 target = aim + new Vector2(0f, Sag) + Hold;
 
         // tensed arms in the ready stance and in ADS (cheek weld)
@@ -357,9 +359,9 @@ internal static class AimModel
             }
         }
 
-        // arm reach relative to the body
+        // Reach around the resting arm pose; moving the rest pitch leaves the arm's range intact.
         Vector2 reach = new(FreeAimPlugin.ArmYaw.Value, FreeAimPlugin.ArmPitch.Value);
-        Vector2 body = new(BodyYaw, 0f);
+        Vector2 body = new(BodyYaw, ReadyStance.ReadyPitch);
         for (int axis = 0; axis < 2; axis++)
         {
             float off = Gun[axis] - body[axis];
@@ -375,7 +377,7 @@ internal static class AimModel
 
         // ---- stance integral: muscles hold the muzzle on the aim against sag and steady drift
         bool integrate = FreeAimPlugin.HoldEnabled.Value
-                         && stance && !ReadyStance.Suspended && stanceW > 0.95f;
+                         && ReadyStance.Braced && !ReadyStance.Suspended && stanceW > 0.95f;
         HoldFrozen = Vector2.zero;
         if (integrate)
         {
@@ -421,7 +423,7 @@ internal static class AimModel
         // fully in ADS: the arm sits on the aim (the game owns the gun), so leaving ADS starts from the centre
         if (_adsBlend >= 1f)
         {
-            Gun = _smooth = aim;
+            Gun = _smooth = Lead;
             _gunVel = viewVel * (1f - carry);
             Swing = _swingVel = Vector2.zero;
             Sway = _swayInertia = Vector2.zero;

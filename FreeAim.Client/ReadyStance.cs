@@ -18,18 +18,46 @@ public enum StanceKeyMode
     Hold,
 }
 
+internal enum ReadyPose
+{
+    None,
+    Braced,
+    Low,
+    High,
+}
+
 /// <summary>
-/// Centred tactical ready stance (CAR-style): the gun is pulled to the centre line, canted around the
+/// Braced tactical ready stance (CAR-style): the gun is pulled to the centre line, canted around the
 /// bore, and the free-aim offset collapses so the crosshair is back at screen centre (vanilla hip fire).
 /// Holding it costs arm stamina through a game-native <see cref="Physical.Consumption"/>.
 /// </summary>
 internal static class ReadyStance
 {
     /// <summary>Player wants the stance (key state).</summary>
-    internal static bool Requested;
+    private static ReadyPose _requested;
 
-    /// <summary>Stance conditions met this frame (holding a gun, not sprinting, not exhausted).</summary>
-    internal static bool Engaged;
+    internal static ReadyPose Current { get; private set; }
+    internal static bool Engaged => Current != ReadyPose.None;
+    internal static bool Braced => Current == ReadyPose.Braced;
+
+    // Separate blends allow a direct high-to-low transition without a step in pitch.
+    private static float _low;
+    private static float _high;
+    private static int _stanceFrame = -2;
+    private static Stamina _recoveringHands;
+    internal static float ReadyPitch => _aimFade * (
+        Mathf.SmoothStep(0f, 1f, _low) * FreeAimPlugin.LowReadyPitch.Value
+        - Mathf.SmoothStep(0f, 1f, _high) * FreeAimPlugin.HighReadyPitch.Value);
+    internal static float BodyFollowMultiplier => Mathf.Lerp(1f, FreeAimPlugin.ReadyBodyFollow.Value,
+        Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(_low + _high)) * _aimFade);
+
+    internal static float ScaleArmRecovery(float rate, Stamina stamina) =>
+        stamina == _recoveringHands && _requested == ReadyPose.Low && Time.frameCount - _stanceFrame <= 1
+        && FreeAimPlugin.StanceEnabled.Value && PointedReadyEnabled
+            ? rate * FreeAimPlugin.LowReadyRecovery.Value
+            : rate;
+
+    private static bool PointedReadyEnabled => FreeAimPlugin.Enabled.Value && FreeAimPlugin.Mode.Value == AimMode.Deadzone;
 
     /// <summary>Engaged, but the hands are busy (reload etc.): pose eased out, no drain, resumes afterwards.</summary>
     internal static bool Suspended;
@@ -61,7 +89,7 @@ internal static class ReadyStance
     /// <summary>Left-shoulder pose weight applied in the body pass this frame, for the overlay.</summary>
     internal static float LeftPoseWeight;
 
-    private static bool _wasRequested;
+    private static bool _wasBraced;
     private static float _baseWeight; // raise x ADS fade, before the shoulder split
 
     /// <summary>
@@ -84,30 +112,39 @@ internal static class ReadyStance
     {
         if (!FreeAimPlugin.StanceEnabled.Value)
         {
-            Requested = false;
+            _requested = ReadyPose.None;
             return;
         }
 
         var key = FreeAimPlugin.StanceKey.Value;
         bool pressed = IsPressedThisFrame(key);
+        ReadyPose pose = PoseForModifiers(key);
         if (FreeAimPlugin.StanceMode.Value == StanceKeyMode.Hold)
         {
-            bool held = IsHeld(key);
-            if (held && pressed && !CanEnter())
+            if (!IsHeld(key))
             {
-                RejectEntry();
+                _requested = ReadyPose.None;
+                return;
             }
-            Requested = held && CanEnter();
+            if (pose == ReadyPose.Braced && !CanEnter())
+            {
+                if (pressed)
+                {
+                    RejectEntry();
+                }
+                pose = ReadyPose.None;
+            }
+            _requested = pose;
         }
-        else if (pressed)
+        else if (pressed && pose != ReadyPose.None)
         {
-            if (Requested)
+            if (_requested == pose)
             {
-                Requested = false;
+                _requested = ReadyPose.None;
             }
-            else if (CanEnter())
+            else if (pose != ReadyPose.Braced || CanEnter())
             {
-                Requested = true;
+                _requested = pose;
             }
             else
             {
@@ -115,6 +152,21 @@ internal static class ReadyStance
             }
         }
     }
+
+    private static ReadyPose PoseForModifiers(KeyboardShortcut key)
+    {
+        // Required modifiers of a custom shortcut belong to its base (braced) pose.
+        bool ctrl = ExtraModifierHeld(key, KeyCode.LeftControl, KeyCode.RightControl);
+        bool alt = ExtraModifierHeld(key, KeyCode.LeftAlt, KeyCode.RightAlt);
+        if ((ctrl && alt) || ((ctrl || alt) && !PointedReadyEnabled))
+        {
+            return ReadyPose.None;
+        }
+        return ctrl ? ReadyPose.Low : alt ? ReadyPose.High : ReadyPose.Braced;
+    }
+
+    private static bool ExtraModifierHeld(KeyboardShortcut key, KeyCode left, KeyCode right) =>
+        !key.Modifiers.Contains(left) && !key.Modifiers.Contains(right) && (Input.GetKey(left) || Input.GetKey(right));
 
     /// <summary>Entry is blocked while the arms are (or just became) exhausted.</summary>
     private static bool CanEnter()
@@ -192,11 +244,11 @@ internal static class ReadyStance
         if (id != _playerId)
         {
             _playerId = id;
-            Requested = false;
+            _requested = ReadyPose.None;
             Exhausted = false;
-            _raise = 0f;
+            _raise = _low = _high = 0f;
             _aimFade = 1f;
-            _wasRequested = false;
+            _wasBraced = false;
             _baseWeight = 0f;
             Centred = false;
             StopDrain();
@@ -205,10 +257,10 @@ internal static class ReadyStance
         var hands = player.Physical?.HandsStamina;
         if (hands != null)
         {
-            if (!Exhausted && Requested && hands.Current <= 1f)
+            if (!Exhausted && _requested == ReadyPose.Braced && hands.Current <= 1f)
             {
                 Exhausted = true; // arms gave out: drop the stance
-                Requested = false;
+                _requested = ReadyPose.None;
                 Notify("手臂耐力耗尽，退出据枪");
                 FreeAimPlugin.Log.LogInfo("FreeAim: stance dropped, arm stamina exhausted");
             }
@@ -218,21 +270,33 @@ internal static class ReadyStance
                 FreeAimPlugin.Log.LogInfo($"FreeAim: arm stamina recovered to {hands.Current:0}, stance available");
             }
         }
-        if (Exhausted)
+        if (Exhausted && _requested == ReadyPose.Braced)
         {
-            Requested = false;
+            _requested = ReadyPose.None;
         }
 
-        Engaged = FreeAimPlugin.StanceEnabled.Value && Requested && holdingGun && !sprinting;
-        // Hands busy (reload, jam clearing, left-hand actions): the stance stays requested and engaged
-        // (crosshair stays centred, so the gun doesn't drift and snap back), but the pose eases out and
-        // the arms are not charged. It resumes by itself once the action is over.
-        Suspended = Engaged && player.HandsController is Player.FirearmController busyFc && HandsBusy(busyFc);
+        bool pointed = _requested is ReadyPose.Low or ReadyPose.High;
+        bool canPose = FreeAimPlugin.StanceEnabled.Value && holdingGun && !sprinting;
+        if (pointed)
+        {
+            var state = player.CurrentManagedState;
+            canPose &= PointedReadyEnabled && state != null && AimModel.IsPlainState(state.Name)
+                && player.BtrState == EPlayerBtrState.Outside;
+        }
+        Current = canPose ? _requested : ReadyPose.None;
+        // Keep the request while the hands are busy or a high/low stance is interrupted by ADS.
+        Suspended = Engaged && ((pointed && pwa.IsAiming)
+            || (player.HandsController is Player.FirearmController busyFc && HandsBusy(busyFc)));
         HandleShoulder();
 
         float raiseTime = Mathf.Max(0.05f, FreeAimPlugin.StanceRaiseTime.Value * WeaponProfile.RaiseScale);
-        _raise = Mathf.MoveTowards(_raise, Engaged && !Suspended ? 1f : 0f, dt / raiseTime);
+        float step = dt / raiseTime;
+        _raise = Mathf.MoveTowards(_raise, Braced && !Suspended ? 1f : 0f, step);
+        _low = Mathf.MoveTowards(_low, Current == ReadyPose.Low && !Suspended ? 1f : 0f, step);
+        _high = Mathf.MoveTowards(_high, Current == ReadyPose.High && !Suspended ? 1f : 0f, step);
         _aimFade = Mathf.MoveTowards(_aimFade, pwa.IsAiming ? 0f : 1f, dt / 0.12f);
+        _stanceFrame = Time.frameCount;
+        _recoveringHands = Current == ReadyPose.Low && !Suspended ? hands : null;
         // The PWA-pass pose is built on the right-shoulder weapon frame. While the game's left-shoulder
         // animation is blended in, PlayerBones.ShiftWeaponRoot remaps the weapon into the third-person
         // frame, so the PWA pose fades out by the shoulder blend and the left-shoulder pose (body pass,
@@ -242,7 +306,7 @@ internal static class ReadyStance
         PoseWeight = _baseWeight * (1f - LeftBlend);
 
         // ADS already drains through the game's own Aim consumption; don't double-charge.
-        bool drain = Engaged && !Suspended && !pwa.IsAiming && FreeAimPlugin.StanceDrainMultiplier.Value > 0f;
+        bool drain = Braced && !Suspended && !pwa.IsAiming && FreeAimPlugin.StanceDrainMultiplier.Value > 0f;
         if (drain && player.HandsController is Player.FirearmController fc)
         {
             _drainRate = ComputeDrainRate(player, fc) * FreeAimPlugin.StanceDrainMultiplier.Value;
@@ -291,11 +355,12 @@ internal static class ReadyStance
     /// </summary>
     private static void HandleShoulder()
     {
-        if (Requested && !_wasRequested)
+        bool braced = _requested == ReadyPose.Braced;
+        if (braced && !_wasBraced)
         {
             Centred = FreeAimPlugin.StanceDefaultCentred.Value;
         }
-        _wasRequested = Requested;
+        _wasBraced = braced;
     }
 
     /// <summary>Same formula the game uses for ADS (Physical, EConsumptionType.Aim), before our multiplier.</summary>

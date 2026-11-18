@@ -58,6 +58,10 @@ public class FreeAimPlugin : BaseUnityPlugin
     internal static ConfigEntry<bool> StanceEnabled;
     internal static ConfigEntry<KeyboardShortcut> StanceKey;
     internal static ConfigEntry<StanceKeyMode> StanceMode;
+    internal static ConfigEntry<float> LowReadyPitch;
+    internal static ConfigEntry<float> HighReadyPitch;
+    internal static ConfigEntry<float> ReadyBodyFollow;
+    internal static ConfigEntry<float> LowReadyRecovery;
     internal static ConfigEntry<float> StanceRaiseTime;
     internal static ConfigEntry<float> StanceCant;
     internal static ConfigEntry<Vector3> StanceOffset;
@@ -234,11 +238,19 @@ public class FreeAimPlugin : BaseUnityPlugin
 
         // ---- 1c. Ready stance
         StanceEnabled = t.Bind(stance, "Enabled", true, cStance, "启用据枪",
-            "战术准备姿态：准星回到屏幕中心（原版腰射准星），枪收近并倾斜，身体撑稳，消耗上肢耐力。");
+            "启用据枪和高、低准备姿态。据枪时准星回到中心，枪收近并倾斜，消耗上肢耐力。");
         StanceKey = t.Bind(stance, "Key", new KeyboardShortcut(KeyCode.Mouse3), cStance, "据枪按键",
-            "据枪按键，默认鼠标侧键 4。");
+            "默认鼠标侧键 4。据枪用此键；Ctrl + 此键为低准备，Alt + 此键为高准备。");
         StanceMode = t.Bind(stance, "Key mode", StanceKeyMode.Toggle, cStance, "按键方式",
-            "切换：按一下进入，再按一下退出。按住：按住期间据枪。");
+            "切换：按一下进入，再按同一组合退出。按住：按住期间保持对应姿态。");
+        LowReadyPitch = t.Bind(stance, "Low ready pitch (deg)", 20f, cStance, "低准备下压角（度）",
+            "低准备时 T 相对视角中心向下偏的角度。", ConfigText.Range(0f, 50f));
+        HighReadyPitch = t.Bind(stance, "High ready pitch (deg)", 25f, cStance, "高准备上抬角（度）",
+            "高准备时 T 相对视角中心向上偏的角度。", ConfigText.Range(0f, 50f));
+        ReadyBodyFollow = t.Bind(stance, "High and low ready body follow (x)", 1.25f, cStance, "高低准备身体跟随倍率",
+            "高、低准备时 A 追 V 的速度和最高转速倍率。", ConfigText.Range(1f, 2f));
+        LowReadyRecovery = t.Bind(stance, "Low ready arm recovery (x)", 1.5f, cStance, "低准备上肢恢复倍率",
+            "低准备时的自然恢复倍率。仍要等游戏原有的恢复冷却结束。", ConfigText.Range(1f, 3f));
         StanceRaiseTime = t.Bind(stance, "Raise time (s)", 0.45f, cStance, "举枪时间（秒）",
             "参考枪进入和退出据枪姿态所需的时间。按武器缩放：重、长、人机差的枪更慢（0.6–1.8 倍）。",
             ConfigText.Range(0.05f, 2f));
@@ -412,6 +424,8 @@ public class FreeAimPlugin : BaseUnityPlugin
                 Log.LogError("FreeAim: FirearmController.InitiateShot not found; recoil feedback disabled.");
             }
 
+            ArmRecoveryPatch.Install(harmony);
+
             var shift = AccessTools.Method(typeof(PlayerBones), nameof(PlayerBones.ShiftWeaponRoot));
             if (shift == null)
             {
@@ -504,13 +518,13 @@ public class FreeAimPlugin : BaseUnityPlugin
             DrawDot(x, y, 6f, Color.red);
         }
 
-        // aim point (where the gun is heading): only differs from the red dot while inertia lags
-        Vector2 lead = AimModel.Lead;
-        if (Mode.Value == AimMode.Deadzone && lead != Vector2.zero)
+        // Grey dot = T, red dot = actual muzzle R.
+        Vector2 target = AimModel.TargetOffset;
+        if (Mode.Value == AimMode.Deadzone && target != Vector2.zero)
         {
             Transform ct = cam.transform;
-            Vector3 aimDir = Quaternion.AngleAxis(lead.x, ct.up)
-                             * Quaternion.AngleAxis(lead.y, ct.right) * ct.forward;
+            Vector3 aimDir = Quaternion.AngleAxis(target.x, ct.up)
+                             * Quaternion.AngleAxis(target.y, ct.right) * ct.forward;
             Vector3 ap = cam.WorldToScreenPoint(ct.position + aimDir * MarkerDistance.Value);
             if (ap.z > 0f)
             {
@@ -524,9 +538,9 @@ public class FreeAimPlugin : BaseUnityPlugin
         var pwa = player.ProceduralWeaponAnimation;
         string text = $"FreeAim {Mode.Value}  {(Enabled.Value ? "ON" : "OFF")} ({ToggleKey.Value})  " +
                       $"gun yaw:{WeaponOffsetPatch.Applied.x:0.0}° pitch:{-WeaponOffsetPatch.Applied.y:0.0}°  " +
-                      $"target yaw:{lead.x:0.0}° pitch:{-lead.y:0.0}°\n" +
+                      $"target yaw:{target.x:0.0}° pitch:{-target.y:0.0}°\n" +
                       $"camera↔muzzle angle: {angle:0.0}°   aiming:{pwa.IsAiming}  sprint:{player.MovementContext.IsSprintEnabled}\n" +
-                      $"stance: {(ReadyStance.Suspended ? "SUSPENDED" : ReadyStance.Engaged ? "READY" : ReadyStance.Exhausted ? "EXHAUSTED" : "off")}  pose:{ReadyStance.PoseWeight:0.00}  " +
+                      $"stance: {ReadyStance.Current}{(ReadyStance.Suspended ? " (paused)" : "")}  exhausted:{ReadyStance.Exhausted}  pose:{ReadyStance.PoseWeight:0.00}  A follow:x{ReadyStance.BodyFollowMultiplier:0.00}  " +
                       $"arm stamina:{player.Physical.HandsStamina.Current:0.0}  " +
                       $"variant:{(ReadyStance.Centred ? "centred" : "normal")}  left shoulder:{ReadyStance.LeftBlend:0.00} left pose:{ReadyStance.LeftPoseWeight:0.00}  centre shift:{ReadyStance.CentreShift * 100f:0.0}cm  clear:{StanceClearance.Applied * 100f:0.0}/{StanceClearance.Need * 100f:0.0}cm ({StanceClearance.Boxes} parts)\n" +
                       $"game sway (deg, P+ = down)  {SwayProbe.Source.Format()}\n" +

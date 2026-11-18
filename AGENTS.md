@@ -12,7 +12,7 @@ Realistic gun handling (realism, not nerfs):
 - The gun target T = V + lead (the gun leads turns, part of the lead stays, recentres after 5 s without mouse input).
 - The arm carries the muzzle R toward T with the gun's inertia (weight × length², ergonomics). Body sway (breath, steps) moves the arm's base and is filtered by the arm.
 - Bullets follow the muzzle. Recoil is never reduced.
-- Ready stance (Mouse4): braced body, centred target, stiffer arm, integral hold, costs arm stamina.
+- Braced stance (Mouse4): braced body, centred target, stiffer arm, integral hold, costs arm stamina. Low ready (Ctrl+Mouse4) and high ready (Alt+Mouse4) offset T in pitch and speed up A following V. Low ready also increases native arm recovery.
 
 ## Status (2026-11-17)
 `FreeAim.Client` **0.1.1** is deployed to `BepInEx/plugins/` (0 build warnings, handling balance pending in-game feedback). The first release package is `dist/FreeAim-0.1.0.zip`. 0.0.22–0.0.31 (= 0.1.0) are **not yet verified in game** (0.0.27: stance keeps the screen centre clear, `StanceClearance.cs`) (0.0.26: ADS is vanilla except the body/neck limit) (0.0.25: recoil feedback into the view, `RecoilFeedback.cs`; recoil sim `C:/Users/Administrator/scratch/sim_recoil2.py`) (0.0.24: integral anti-windup + gun swing, sim in `C:/Users/Administrator/scratch/sim_024*.py`); balance comes after the feel is right.
@@ -38,6 +38,7 @@ Open issues and to-do: see `docs/DESIGN.md` section 7.
 | `WeaponProfile.cs` | Per-weapon values from `Item.TotalWeight`, `WeaponLn`, `TotalErgonomics` (refresh 0.5 s or on controller change): inertia ratio J, ergo factor, arm Hz, smoothing time, body turn factor, kappa, sag scale, hold tau (with arm fatigue). Profile off = base config values. |
 | `WeaponOffsetPatch.cs` | Postfix on `ProceduralWeaponAnimation.ApplyComplexRotation`. Order: conditions → `WeaponProfile.Update` → `ReadyStance.Step` → `AimModel.Step` (Fixed mode: `Deactivate` + constant offset) → probe → `AimModel.RemoveGameSway` → rotate the weapon by the model output around `RotationCenter` → `ReadyStance.ApplyPose`. |
 | `ReadyStance.cs` | Stance input (own key test), stamina gating, native `Physical.Consumption` drain, hands-busy suspend, shoulder handling. `Stabilization` (body bracing) and `StanceWeight` feed the model. `ApplyPose` (PWA pass, right shoulder: cant about the bore, view-space offset); `ApplyBodyPass` (from the `ShiftWeaponRoot` postfix: whole left-shoulder pose plus the centring slide on both shoulders). |
+| `ArmRecoveryPatch.cs` | Scales only the local player’s natural hands stamina recovery rate while low ready is active, inside the game’s existing cooldown and capacity checks. |
 | `ConfigText.cs` | F12 localisation (0.0.23): `ConfigText.Bind` adds a `ConfigurationManagerAttributes` tag (Chinese `Category`, `DispName`, decreasing `Order` to keep code order) and a Chinese description. ConfigurationManager 18.4 reads the tag by class name and public field names via reflection. Sections and keys stay English, so the .cfg and saved values are unchanged. Enum values show Chinese through `[Description]` (`AimMode`, `StanceKeyMode`). |
 | `SwayProbe.cs` | Debug only (overlay on): game sway source, muzzle deviation, weapon/camera split, body-frame velocity; slow average and fast RMS; overlay rows and one line per second (incl. the model and weapon profile) in append-only `BepInEx/FreeAim_sway.log`. |
 
@@ -56,7 +57,7 @@ Config sections (English in the .cfg, Chinese in F12; add new entries with `t.Bi
 - `1e. Weapon handling`: reference 3.5 kg / 0.8 m, inertia exponent 0.5, extra weight emphasis 0.08, ergo effect 0.2, tired-arm hold slowdown 1.5, shake inertia reference 1.
 - `2. Fixed offset (spike)`, `3. Debug` (overlay currently **on** in the user's cfg).
 
-Default keys: F8 free aim on/off; Mouse4 (`KeyCode.Mouse3`) ready stance.
+Default keys: F8 free aim on/off; Mouse4 (`KeyCode.Mouse3`) braced stance; Ctrl+Mouse4 low ready; Alt+Mouse4 high ready.
 Overlay dots: white = screen centre, red = muzzle direction, grey = gun target (lead).
 
 ## Build / deploy
