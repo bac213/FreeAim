@@ -1,0 +1,9 @@
+# Build and release outputs
+bin/
+obj/
+/dist/
+
+# Local IDE settings
+.vs/
+*.user
+*.suo

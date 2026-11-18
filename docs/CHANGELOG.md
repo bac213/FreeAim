@@ -1,0 +1,39 @@
+# FreeAim.Client changelog
+
+"Verified" = confirmed by the user in game. Dates are 2026-11.
+
+| Version | Change | Verified |
+|---|---|---|
+| 0.0.2 | Deadzone: the mouse moves the gun inside a cone, the camera gets the overflow | yes |
+| 0.0.3 | Gun inertia (damped spring), camera micro-turn, soft cone edge | used, not tuned |
+| 0.0.4 | Ready stance: Mouse4, crosshair recentred, cant + pose offset, arm-stamina drain | yes |
+| 0.0.5 | Stance stability: removes 50% of procedural sway and inertia lag | used |
+| 0.0.6 | Stance entry refused (with a notice) when arm stamina is out | no |
+| 0.0.7 | Stance pose in PWA with mirroring on the left shoulder | **failed**: `ShiftWeaponRoot` remaps it, centring went the wrong way |
+| 0.0.8 | Stance pose in a `ShiftWeaponRoot` postfix measured against the render camera | **failed**: jitter while moving (render camera is stale there) |
+| 0.0.9 | Centred variant on the right shoulder; left-shoulder entry switches shoulder | shoulder switch worked; centring jittered when strafing |
+| 0.0.10 | Centring slide moved to a `ShiftWeaponRoot` postfix measured against `HandsContainer.CameraTransform` | yes, jitter gone |
+| 0.0.11 | Stance stays on the left shoulder; left pose built in the body pass; shoulder key switches inside the stance | yes |
+| 0.0.12 | `Centring, left shoulder` default 1 | yes |
+| 0.0.13 | Stance suspends while the hands are busy (reload, malfunction, unload, fold stock, mods, launcher, left-hand actions); no drain; auto-resume | yes |
+| 0.0.14–0.0.16 | Sway probe: overlay rows and `BepInEx/FreeAim_sway.log`; weapon/camera split; body-frame velocity | yes (measurements in `DESIGN.md`) |
+| 0.0.17 | Stance hold: integral trim of the measured muzzle-vs-aim error, frozen while shooting | superseded by 0.0.20 |
+| 0.0.18 | `WeaponProfile`: spring Hz / damping / hold tau from weight × length² and ergonomics | superseded in part |
+| 0.0.19 | Retune: everything slower, heavier guns overshoot more | user: "too tight" before, retuned |
+| 0.0.20 | **Four-point model** (`AimModel`): mouse → view with neck limit and body turn speed; gun leads turns; body sway rerouted through the arm; turn sway removed; kappa, gravity sag, stance integral. Fixed the raw-mouse-units bug (mouse deltas were treated as degrees) | user: overshoot too strong |
+| 0.0.21 | Global arm P × 0.5 (D held) | user: still jelly-like |
+| 0.0.22 | Arm rewritten: target smoothing + critically damped spring + partial velocity feed-forward (never overshoots). Rigid body carry removed. ADS is now R following V (camera-to-gun transfer removed), arm stiff and integral on in ADS. Removed damping ratio, arm stiffness P, overshoot-per-doubling, minimum damping, ADS behaviour | **no, verify next** |
+| 0.0.23 | F12 menu localised to Chinese (display names, categories, descriptions, enum values); .cfg keys unchanged | **no, verify next** |
+| 0.0.24 | Integral anti-windup: per axis, it only integrates while the view and gun turn slower than 10°/s, the muzzle is within 1.5° of the arm target and the swing has settled (no more ±3° windup in turns). New gun swing: the gun's own inertia, a critically damped mode driven by the arm's acceleration (one swing past on a stop, ~0.03° swing-back), gain ∝ scale^0.5, return Hz ∝ 1/scale (scale = J^0.5 / ergo). Sim at 150°/s: SMG 0.5°, reference 1.0–1.3°, DMR 1.6–2.8°, MG 1.9–3.6°. A pure braking-torque cap was simulated and rejected (cliff: 0° or 15–30°) | **no, verify next** |
+| 0.0.25 | Recoil feedback (`RecoilFeedback.cs`, F12 `1f`): reads the game muzzle recoil (hand rotation recoil minus hip wander offset, plus weapon recoil) in view axes. Follow: the view takes 30% (hip) / 50% (stance) and returns with it, the muzzle is compensated so bullets go where vanilla puts them. Push: 0.1 × recoil through a 4 Hz critically damped upper body, residual 0.3 per rise, returns in 1.5 s (adds to recoil). Off in ADS. Injected via `Player.Rotate(…, true)`; the aim model subtracts it from the view delta | **no, verify next** |
+| 0.0.26 | ADS back to vanilla: model output and sway removal fade with the game's `_aimingWeight` (gun reaches the centre as the camera reaches the scope); fully in ADS the arm state sits on the aim; integral no longer runs in ADS. Kept in ADS: body limits the view (neck range `Neck range in ADS`, body turn rate) | **no, verify next** |
+| 0.0.27 | Body push split hip 0.35 / stance 0.15 (stock not fully shouldered at the hip). Arm faster: response 2.0 Hz (was 1.6), smoothing 0.10 s (was 0.12), floor 1.2 Hz (was 1.0). Stance raise 0.45 s × weapon (0.6–1.8 × sqrt(inertia^0.5 / ergo)), was 0.25 s flat. New `StanceClearance.cs`: in the body pass, every visible weapon mesh is an oriented box (local mesh bounds); boxes covering the centre column are projected in Cam space and the gun is translated down until all are 3° below centre (max 0.15 m, quick down 0.08 s, slow up 0.35 s). User cfg edited (response, smoothing, raise time; old `Body push (x)` removed; backup `scratch/backup/cfg-before-027.cfg`) | **no, verify next** |
+| 0.0.28 | Shoulder carry: the gun takes c of the view motion at once (relative state only loses (1−c)·dV), the arm spring chases the rest. c = 0.5 / sqrt(swing scale), max 0.85 (SMG 0.64, reference 0.5, SR-25 0.34). Swing also driven by the carried acceleration (view velocity low-passed 30 ms). Sim 150°/s: reference 50% speed 157→~60 ms, steady lag 25→15° | **no, verify next** |
+| 0.0.29 | Recoil to body scaled per gun: transfer = 2J/(J+1) (pistol J≈0.02 → ~0.04, SMG 0.52, reference 1, SR-25 1.52, max 1.6), folded stock ×0.4; applies to view follow and body push. Stance clearance measures the rest pose (aim-model rotation undone about the pivot), fixes up/down jerks while turning; smoothing 0.12 s down / 0.4 s up | **no, verify next** |
+| 0.0.30 | Recoil feedback driven by the shot impulse, not the muzzle flip: `InitiateShot` postfix, p = bullet mass × projectiles × v × (1 + v/2000) relative to 5.45x39 7N6; × stock transfer (shouldered 1; no stock / folded 0.15; integral stock = no stock slot and not a pistol) × non-stock mods recoil at half weight (0.5–1.2). View kick (camera only, gun compensated, 6 Hz crit. damped) hip 0.6° / stance 0.8°, ±30% random sideways; body push hip 0.5° / stance 0.2° per reference shot, residual 0.3, 1.5 s. Replaces the 0.0.29 J-based transfer. Old follow / push (x) keys removed from the user cfg (backup `scratch/backup/cfg-before-030.cfg`) | **no, verify next** |
+| 0.0.31 | Gas factor from energy: 1 + v²/1.5e6 (charge = ½mv² / (30% × 3.7 MJ/kg), gas at 1.5 v), was 1 + v/2000. New `WeaponMass.cs`: inertia J = Σ m r² and gravity moment Σ m x about `RotationCenter`, per placed part from `ProceduralWeaponAnimation._ccv` (ContainerCollectionView: own mass = total − placed children; centre = volume-weighted mesh centres owned by that part; receiver = meshes owned by no part), in Weapon_root_anim space. Ratio vs uniform reference rod (J0 = m0 l0²/3, moment m0 l0/2). F12 `Use mass distribution` (off = m·L²). Overlay shows both ratios for calibration | **no, verify next** |
+| **0.1.0** | **First release.** Debug overlay and sway log off by default (`Show overlay` = false, also in the user cfg). Test-only entries (`Mode`, `2. Fixed offset`, `3. Debug`) marked `IsAdvanced` (F12 "Advanced settings"). `README.md` (Chinese, install/keys/known issues). Package `dist/FreeAim-0.1.0.zip` = `BepInEx/plugins/FreeAim.Client.dll` + `README.md`. No behaviour change from 0.0.31 | release |
+| 0.1.1 | Ergonomics effect 0.25 → 0.20. Added weight emphasis 0.20, increasing the contribution of total weight to handling by 20% while retaining the original inertia exponent. | pending in-game feedback |
+| **Unreleased** | Reduced total weight sensitivity by 10%: effective mass exponent 0.60 to 0.54, with weight emphasis 0.08. | pending in-game feedback |
+
+Rollback copy of 0.0.19 (DLL, source, config): `C:/Users/Administrator/scratch/backup/`.
