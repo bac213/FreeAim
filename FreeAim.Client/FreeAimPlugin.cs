@@ -60,6 +60,7 @@ public class FreeAimPlugin : BaseUnityPlugin
     internal static ConfigEntry<StanceKeyMode> StanceMode;
     internal static ConfigEntry<float> LowReadyPitch;
     internal static ConfigEntry<float> HighReadyPitch;
+    internal static ConfigEntry<float> HighReadyForwardCm;
     internal static ConfigEntry<float> ReadyBodyFollow;
     internal static ConfigEntry<float> LowReadyRecovery;
     internal static ConfigEntry<float> StanceRaiseTime;
@@ -247,6 +248,9 @@ public class FreeAimPlugin : BaseUnityPlugin
             "低准备时 T 相对视角中心向下偏的角度。", ConfigText.Range(0f, 50f));
         HighReadyPitch = t.Bind(stance, "High ready pitch (deg)", 25f, cStance, "高准备上抬角（度）",
             "高准备时 T 相对视角中心向上偏的角度。", ConfigText.Range(0f, 50f));
+        HighReadyForwardCm = t.Bind(stance, "Right shoulder high ready forward (cm)", 12f, cStance, "右肩高准备前移（厘米）",
+            "右肩高准备时把枪和握点向视角前方移动，让左前臂离开镜头。移动会限制在双臂可达范围内。",
+            ConfigText.Range(0f, 22f));
         ReadyBodyFollow = t.Bind(stance, "High and low ready body follow (x)", 1.25f, cStance, "高低准备身体跟随倍率",
             "高、低准备时 A 追 V 的速度和最高转速倍率。", ConfigText.Range(1f, 2f));
         LowReadyRecovery = t.Bind(stance, "Low ready arm recovery (x)", 1.5f, cStance, "低准备上肢恢复倍率",
@@ -434,6 +438,7 @@ public class FreeAimPlugin : BaseUnityPlugin
             }
             harmony.Patch(shift, postfix: new HarmonyMethod(typeof(FreeAimPlugin), nameof(ShiftWeaponRootPostfix)));
             Log.LogInfo("FreeAim: patched PlayerBones.ShiftWeaponRoot");
+            HighReadyClearance.Install(harmony);
 
         }
         catch (Exception e)
@@ -541,7 +546,7 @@ public class FreeAimPlugin : BaseUnityPlugin
                       $"target yaw:{target.x:0.0}° pitch:{-target.y:0.0}°\n" +
                       $"camera↔muzzle angle: {angle:0.0}°   aiming:{pwa.IsAiming}  sprint:{player.MovementContext.IsSprintEnabled}\n" +
                       $"stance: {ReadyStance.Current}{(ReadyStance.Suspended ? " (paused)" : "")}  exhausted:{ReadyStance.Exhausted}  pose:{ReadyStance.PoseWeight:0.00}  A follow:x{ReadyStance.BodyFollowMultiplier:0.00}  " +
-                      $"arm stamina:{player.Physical.HandsStamina.Current:0.0}  " +
+                      $"arm stamina:{player.Physical.HandsStamina.Current:0.0}  high fwd:{HighReadyClearance.ForwardCm:0.0}cm  " +
                       $"variant:{(ReadyStance.Centred ? "centred" : "normal")}  left shoulder:{ReadyStance.LeftBlend:0.00} left pose:{ReadyStance.LeftPoseWeight:0.00}  centre shift:{ReadyStance.CentreShift * 100f:0.0}cm  clear:{StanceClearance.Applied * 100f:0.0}/{StanceClearance.Need * 100f:0.0}cm ({StanceClearance.Boxes} parts)\n" +
                       $"game sway (deg, P+ = down)  {SwayProbe.Source.Format()}\n" +
                       $"muzzle − free aim (deg)     {SwayProbe.Muzzle.Format()}\n" +

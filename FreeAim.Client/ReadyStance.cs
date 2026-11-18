@@ -502,7 +502,7 @@ internal static class ReadyStance
         }
         _poseFrame = -1;
         float baseWeight = _baseWeight;
-        if (baseWeight <= 0f || player.HandsController is not Player.FirearmController fc)
+        if (player.HandsController is not Player.FirearmController fc)
         {
             StanceClearance.Reset();
             return;
@@ -511,13 +511,30 @@ internal static class ReadyStance
         var hands = pwa.HandsContainer;
         Transform root = hands.WeaponRootAnim;
         Transform cam = hands.CameraTransform;
-        Transform fireport = fc.CurrentFireport?.Original;
-        if (root == null || cam == null || fireport == null)
+        if (root == null || cam == null)
         {
             return;
         }
 
         float left = Mathf.Clamp01(leftStanceCurve);
+        float highWeight = PointedReadyEnabled && FreeAimPlugin.StanceEnabled.Value && !Suspended
+            ? Mathf.SmoothStep(0f, 1f, _high) * _aimFade * (1f - left)
+            : 0f;
+        if (highWeight > 0f)
+        {
+            HighReadyClearance.ApplyBeforeHandIk(player, root, cam, highWeight);
+        }
+        if (baseWeight <= 0f)
+        {
+            StanceClearance.Reset();
+            return;
+        }
+        Transform fireport = fc.CurrentFireport?.Original;
+        if (fireport == null)
+        {
+            return;
+        }
+
         float wl = baseWeight * left;
         LeftPoseWeight = wl;
         float centreLeft = FreeAimPlugin.StanceCentreLeft.Value;
