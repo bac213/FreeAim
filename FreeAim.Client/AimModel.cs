@@ -73,6 +73,8 @@ internal static class AimModel
     private static Vector2 _smooth;       // smoothed arm target, relative to V, world-anchored like Gun
     private static Vector2 _lastView;
     private static bool _hasView;
+    private static Vector2 _appliedInput;
+    internal static int ViewResets { get; private set; }
     private static int _playerId;
     private static bool _leadAllowed;
     private static float _ads;
@@ -109,8 +111,9 @@ internal static class AimModel
     /// own ClampRotation (sensitivity, ADS sensitivity, state factor, per-call cap), applies the neck limit,
     /// feeds the lead, adds the ADS camera-to-gun transfer, and hands the degrees on with ignoreClamp = true.
     /// </summary>
-    public static void RotatePrefix(Player __instance, ref Vector2 deltaRotation, ref bool ignoreClamp)
+    public static void RotatePrefix(Player __instance, ref Vector2 deltaRotation, ref bool ignoreClamp, out Vector2? __state)
     {
+        __state = null;
         if (!__instance.IsYourPlayer || ignoreClamp || !Active || !Fresh)
         {
             return;
@@ -160,8 +163,17 @@ internal static class AimModel
         {
             SinceInput = 0f;
         }
+        __state = __instance.MovementContext.Rotation;
         deltaRotation = deg;
         ignoreClamp = true;
+    }
+
+    // Record what the game actually accepted, including pitch limits. ignoreClamp calls
+    // (e.g. our own camera feedback) did not set __state and are accounted for separately.
+    public static void RotatePostfix(Player __instance, Vector2? __state)
+    {
+        if (!__state.HasValue) return;
+        _appliedInput += MotionLimits.AngleDelta(__state.Value, __instance.MovementContext.Rotation);
     }
 
     // ------------------------------------------------------------------ per frame
@@ -177,6 +189,8 @@ internal static class AimModel
     internal static void Deactivate()
     {
         Active = false;
+        _appliedInput = Vector2.zero;
+        _hasView = false;
         Weight = 0f;
         _activeFade = 0f;
         Output = Vector2.zero;
@@ -224,15 +238,18 @@ internal static class AimModel
 
         // view change this frame; world-anchored body and gun stay put while the view turns
         Vector2 view = mc.Rotation;
-        Vector2 dV = _hasView ? new Vector2(Mathf.DeltaAngle(_lastView.x, view.x), Mathf.DeltaAngle(_lastView.y, view.y)) : Vector2.zero;
+        Vector2 dV = _hasView ? MotionLimits.AngleDelta(_lastView, view) : Vector2.zero;
         _lastView = view;
         _hasView = true;
         dV -= RecoilFeedback.ConsumeInjected(); // recoil feedback moved the view, not the mouse
-        bool jump = dt <= 0f || dV.magnitude > 45f; // vault, respawn, mount: keep relative state, drop velocities
+        bool jump = dt <= 0f || MotionLimits.CameraCut(_appliedInput, ref dV);
+        _appliedInput = Vector2.zero;
         if (jump)
         {
             dV = Vector2.zero;
-            _gunVel = _bodyVel = _swingVel = Vector2.zero;
+            _gunVel = _bodyVel = _swingVel = _viewVelLp = Vector2.zero;
+            BodyRate = 0f;
+            if (Active && dt > 0f) ViewResets++;
         }
         Vector2 viewVel = dt > 0f ? dV / dt : Vector2.zero;
         // shoulder carry: the torso and shoulder turn with the head from the first instant (same motor command),
@@ -369,17 +386,13 @@ internal static class AimModel
         // Reach around the resting arm pose; moving the rest pitch leaves the arm's range intact.
         Vector2 reach = new(FreeAimPlugin.ArmYaw.Value, FreeAimPlugin.ArmPitch.Value);
         Vector2 body = new(BodyYaw, ReadyStance.ReadyPitch);
-        for (int axis = 0; axis < 2; axis++)
+        Vector2 contact = MotionLimits.RoundReach(Gun - body, reach, out Vector2 normal);
+        if (normal != Vector2.zero)
         {
-            float off = Gun[axis] - body[axis];
-            if (Mathf.Abs(off) > reach[axis])
-            {
-                Gun[axis] = body[axis] + Mathf.Sign(off) * reach[axis];
-                if ((_gunVel[axis] + carry * viewVel[axis] - bodyVel[axis]) * off > 0f)
-                {
-                    _gunVel[axis] = bodyVel[axis] - carry * viewVel[axis];
-                }
-            }
+            Gun = body + contact;
+            // Remove only outward velocity; the tangent remains free even at a corner.
+            float outward = Vector2.Dot(_gunVel + carry * viewVel - bodyVel, normal);
+            if (outward > 0f) _gunVel -= normal * outward;
         }
 
         // ---- stance integral: muscles hold the muzzle on the aim against sag and steady drift
@@ -464,6 +477,8 @@ internal static class AimModel
 
     private static void ResetAll()
     {
+        _appliedInput = Vector2.zero;
+        ViewResets = 0;
         BodyYaw = BodyRate = 0f;
         Gun = Sway = Swing = Hold = Output = Vector2.zero;
         _leadKeep = _leadFast = _gunVel = _viewVelLp = _swingVel = _bodyVel = _swayLow = _swayInertia = _smooth = Vector2.zero;

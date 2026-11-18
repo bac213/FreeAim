@@ -426,7 +426,8 @@ public class FreeAimPlugin : BaseUnityPlugin
                 Log.LogError("FreeAim: Player.Rotate(Vector2,bool) not found; deadzone mode will not work.");
                 return;
             }
-            harmony.Patch(rotate, prefix: new HarmonyMethod(typeof(AimModel), nameof(AimModel.RotatePrefix)));
+            harmony.Patch(rotate, prefix: new HarmonyMethod(typeof(AimModel), nameof(AimModel.RotatePrefix)),
+                postfix: new HarmonyMethod(typeof(AimModel), nameof(AimModel.RotatePostfix)));
             Log.LogInfo("FreeAim: patched Player.Rotate");
 
             var shot = AccessTools.Method(typeof(Player.FirearmController), nameof(Player.FirearmController.InitiateShot));
@@ -563,17 +564,18 @@ public class FreeAimPlugin : BaseUnityPlugin
                       $"target yaw:{target.x:0.0}° pitch:{-target.y:0.0}°\n" +
                       $"camera↔muzzle angle: {angle:0.0}°   aiming:{pwa.IsAiming}  sprint:{player.MovementContext.IsSprintEnabled}\n" +
                       $"stance: {ReadyStance.Current}{(ReadyStance.Suspended ? " (paused)" : "")}  exhausted:{ReadyStance.Exhausted}  pose:{ReadyStance.PoseWeight:0.00}  A follow:x{ReadyStance.BodyFollowMultiplier:0.00}  " +
-                      $"arm stamina:{player.Physical.HandsStamina.Current:0.0}  high right/down:{HighReadyPlacement.OffsetCm.x:0.0}/{-HighReadyPlacement.OffsetCm.y:0.0}cm  " +
+                      $"arm stamina:{player.Physical.HandsStamina.Current:0.0}  low blend:{ReadyStance.LowBenefit:0.00}  view resets:{AimModel.ViewResets}  " +
                       $"variant:{(ReadyStance.Centred ? "centred" : "normal")}  left shoulder:{ReadyStance.LeftBlend:0.00} left pose:{ReadyStance.LeftPoseWeight:0.00}  centre shift:{ReadyStance.CentreShift * 100f:0.0}cm  clear:{StanceClearance.Applied * 100f:0.0}/{StanceClearance.Need * 100f:0.0}cm ({StanceClearance.Boxes} parts)\n" +
+                      $"{ArmPlacement.Format()}\n" +
                       $"game sway (deg, P+ = down)  {SwayProbe.Source.Format()}\n" +
                       $"muzzle − free aim (deg)     {SwayProbe.Muzzle.Format()}\n" +
                       $"model (P+ = down)  {AimModel.Format()}\n" +
                       $"recoil (P+ = down)  {RecoilFeedback.Format()}\n" +
                       WeaponProfile.Format();
         GUI.color = Color.black;
-        GUI.Label(new Rect(11, 101, 900, 140), text);
+        GUI.Label(new Rect(11, 101, 1200, 200), text);
         GUI.color = Color.yellow;
-        GUI.Label(new Rect(10, 100, 900, 140), text);
+        GUI.Label(new Rect(10, 100, 1200, 200), text);
         GUI.color = Color.white;
     }
 

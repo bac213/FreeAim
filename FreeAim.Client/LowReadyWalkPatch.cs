@@ -21,7 +21,8 @@ internal static class LowReadyWalkPatch
     private static void BeforeApplyMotion(MovementState __instance, ref Vector3 motion)
     {
         // EFT calls the normal walking state Run. Sprint has its own state and a separate entry flag.
-        if (__instance.Name != EPlayerState.Run || !ReadyStance.LowReadyActive)
+        float blend = ReadyStance.LowBenefit;
+        if (__instance.Name != EPlayerState.Run || blend <= 0f)
         {
             return;
         }
@@ -41,7 +42,7 @@ internal static class LowReadyWalkPatch
 
         // The step comes from the selected speed and the game's movement penalties. Scale it after
         // the normalized speed clamp, before the game projects onto slopes and applies gravity/collision.
-        float multiplier = FreeAimPlugin.LowReadyWalkSpeed.Value;
+        float multiplier = Mathf.Lerp(1f, FreeAimPlugin.LowReadyWalkSpeed.Value, blend);
         motion.x *= multiplier;
         motion.z *= multiplier;
     }

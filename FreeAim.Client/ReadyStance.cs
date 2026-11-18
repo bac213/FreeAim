@@ -54,13 +54,10 @@ internal static class ReadyStance
         Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(_lowBodyFollow + _high)) * _aimFade);
 
     internal static float ScaleArmRecovery(float rate, Stamina stamina) =>
-        stamina == _recoveringHands && _requested == ReadyPose.Low && Time.frameCount - _stanceFrame <= 1
-        && FreeAimPlugin.StanceEnabled.Value && PointedReadyEnabled
-            ? rate * FreeAimPlugin.LowReadyRecovery.Value
-            : rate;
+        stamina == _recoveringHands ? rate * Mathf.Lerp(1f, FreeAimPlugin.LowReadyRecovery.Value, LowBenefit) : rate;
 
-    internal static bool LowReadyActive => Current == ReadyPose.Low && _requested == ReadyPose.Low && !Suspended
-        && Time.frameCount - _stanceFrame <= 1 && FreeAimPlugin.StanceEnabled.Value && PointedReadyEnabled;
+    internal static float LowBenefit => Time.frameCount - _stanceFrame <= 1 && _recoveringHands != null
+        && FreeAimPlugin.StanceEnabled.Value && PointedReadyEnabled ? LowPitchBlend : 0f;
 
     private static bool PointedReadyEnabled => FreeAimPlugin.Enabled.Value && FreeAimPlugin.Mode.Value == AimMode.Deadzone;
 
@@ -309,7 +306,7 @@ internal static class ReadyStance
         LowReadyAdsLimit = raisingLow && aiming ? 1f - LowPitchBlend : 1f;
         _aimFade = Mathf.MoveTowards(_aimFade, aiming ? 0f : 1f, dt / 0.12f);
         _stanceFrame = Time.frameCount;
-        _recoveringHands = Current == ReadyPose.Low && !Suspended ? hands : null;
+        _recoveringHands = canPoint && !aiming && !busy && _low > 0f ? hands : null;
         // The PWA-pass pose is built on the right-shoulder weapon frame. While the game's left-shoulder
         // animation is blended in, PlayerBones.ShiftWeaponRoot remaps the weapon into the third-person
         // frame, so the PWA pose fades out by the shoulder blend and the left-shoulder pose (body pass,
@@ -450,16 +447,11 @@ internal static class ReadyStance
         }
         var hands = pwa.HandsContainer;
         Transform root = hands.WeaponRootAnim;
-        // Only the camera's orientation is used here (cant axis, offset directions); positional
-        // measurement against the camera happens in ApplyCentring.
-        Transform cam = hands.CameraTransform;
         Transform fireport = fc.CurrentFireport?.Original;
-        if (root == null || cam == null || fireport == null)
+        if (root == null || fireport == null)
         {
             return;
         }
-
-        float centre = Centred ? FreeAimPlugin.StanceCentreCentred.Value : FreeAimPlugin.StanceCentreNormal.Value;
 
         // Cant around the bore line (axis through the muzzle along the shot direction):
         // muzzle position and shot direction are unchanged, so bullets still go to screen centre.
@@ -473,18 +465,7 @@ internal static class ReadyStance
             root.SetPositionAndRotation(pivot + roll * (root.position - pivot), roll * root.rotation);
         }
 
-        // Pull the gun toward the centre line / up / in (camera space, metres). Translation only, so the
-        // shot direction is unchanged; only the muzzle origin shifts by a few cm.
-        Vector3 offset = FreeAimPlugin.StanceOffset.Value;
-        offset.x *= 1f - centre; // the sideways shift is superseded by centring
-        offset *= w;
-        if (offset != Vector3.zero)
-        {
-            root.position += cam.right * offset.x + cam.up * offset.y + cam.forward * offset.z;
-        }
-
-        // The sideways centring is applied later, in the body pass (ApplyBodyPass), once the arms rig
-        // has been moved onto this frame's ribcage. See ApplyBodyPass for why.
+        // Translation is evaluated against the final handed pose, before native hand IK.
     }
 
     private static int _poseFrame = -1;
@@ -508,6 +489,7 @@ internal static class ReadyStance
     /// </summary>
     internal static void ApplyBodyPass(Player player, float leftStanceCurve, float proceduralPositionWeight)
     {
+        ArmPlacement.Begin();
         CentreShift = 0f;
         LeftPoseWeight = 0f;
         if (_poseFrame != Time.frameCount)
@@ -534,26 +516,17 @@ internal static class ReadyStance
         float highWeight = PointedReadyEnabled && FreeAimPlugin.StanceEnabled.Value
             ? Mathf.SmoothStep(0f, 1f, _high) * _aimFade * (1f - left)
             : 0f;
-        if (highWeight > 0f)
-        {
-            HighReadyPlacement.Apply(player, root, cam, highWeight);
-        }
-        if (baseWeight <= 0f)
+        if (baseWeight <= 0f && highWeight <= 0f)
         {
             StanceClearance.Reset();
             return;
         }
         Transform fireport = fc.CurrentFireport?.Original;
-        if (fireport == null)
-        {
-            return;
-        }
-
         float wl = baseWeight * left;
         LeftPoseWeight = wl;
         float centreLeft = FreeAimPlugin.StanceCentreLeft.Value;
 
-        if (wl > 0f)
+        if (wl > 0f && fireport != null)
         {
             // Same clockwise cant as on the right shoulder (top of the gun to the left), about the bore.
             float cant = FreeAimPlugin.StanceCant.Value * wl;
@@ -564,18 +537,21 @@ internal static class ReadyStance
                 Quaternion roll = Quaternion.AngleAxis(cant, bore);
                 root.SetPositionAndRotation(pivot + roll * (root.position - pivot), roll * root.rotation);
             }
-
-            // Pose offset with x mirrored: "toward the centre line" is to the right on this shoulder.
-            Vector3 offset = FreeAimPlugin.StanceOffset.Value;
-            offset.x = -offset.x * (1f - centreLeft);
-            offset *= wl;
-            if (offset != Vector3.zero)
-            {
-                root.position += cam.right * offset.x + cam.up * offset.y + cam.forward * offset.z;
-            }
         }
 
+        // Preserve the authored pose first. Screen composition may only use the remaining reach.
         float centreRight = Centred ? FreeAimPlugin.StanceCentreCentred.Value : FreeAimPlugin.StanceCentreNormal.Value;
+        Vector3 pose = FreeAimPlugin.StanceOffset.Value * baseWeight;
+        pose.x = FreeAimPlugin.StanceOffset.Value.x * ((baseWeight - wl) * (1f - centreRight) - wl * (1f - centreLeft));
+        pose.x += highWeight * FreeAimPlugin.HighReadyRightCm.Value * 0.01f;
+        pose.y -= highWeight * FreeAimPlugin.HighReadyDownCm.Value * 0.01f;
+        ArmPlacement.Translate(player, root, cam.right * pose.x + cam.up * pose.y + cam.forward * pose.z);
+        if (baseWeight <= 0f || fireport == null)
+        {
+            StanceClearance.Reset();
+            return;
+        }
+        Vector3 beforeComposition = root.position;
         float weight = centreRight * baseWeight * (1f - left) + centreLeft * wl;
         if (weight > 0f)
         {
@@ -584,6 +560,11 @@ internal static class ReadyStance
 
         // Last: measure clearance from a stable reference built from this pose and lower the live weapon.
         StanceClearance.Apply(pwa, root, cam, baseWeight, proceduralPositionWeight, Time.deltaTime);
+        Vector3 requested = root.position - beforeComposition;
+        root.position = beforeComposition;
+        float fraction = ArmPlacement.Translate(player, root, requested);
+        CentreShift *= fraction;
+        StanceClearance.Applied *= fraction;
     }
 
     private static void ApplyCentring(ProceduralWeaponAnimation pwa, Player.FirearmController fc, Transform root, Transform cam,
