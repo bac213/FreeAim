@@ -65,6 +65,7 @@ public class FreeAimPlugin : BaseUnityPlugin
     internal static ConfigEntry<float> LowReadyRecovery;
     internal static ConfigEntry<float> LowReadyWalkSpeed;
     internal static ConfigEntry<float> StanceRaiseTime;
+    internal static ConfigEntry<float> LowReadyRaiseTime;
     internal static ConfigEntry<float> StanceCant;
     internal static ConfigEntry<Vector3> StanceOffset;
     internal static ConfigEntry<float> StanceDrainMultiplier;
@@ -261,6 +262,9 @@ public class FreeAimPlugin : BaseUnityPlugin
             ConfigText.Range(1f, 1.3f));
         StanceRaiseTime = t.Bind(stance, "Raise time (s)", 0.45f, cStance, "举枪时间（秒）",
             "参考枪进入和退出据枪姿态所需的时间。按武器缩放：重、长、人机差的枪更慢（0.6–1.8 倍）。",
+            ConfigText.Range(0.05f, 2f));
+        LowReadyRaiseTime = t.Bind(stance, "Low ready raise time (s)", 0.70f, cStance, "低准备抬枪时间（秒）",
+            "参考枪退出低准备或从低准备直接开镜时的抬枪时间，按武器缩放。数值越大，抬枪越慢。",
             ConfigText.Range(0.05f, 2f));
         ClearEnabled = t.Bind(stance, "Keep centre clear", true, cStance, "避开屏幕中心",
             "据枪时按枪的实际外形（瞄具、支架、导轨的高度）把枪往下放，直到不挡住屏幕中心。只平移，枪管方向不变。");

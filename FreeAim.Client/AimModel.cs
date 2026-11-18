@@ -205,7 +205,14 @@ internal static class AimModel
         float aimWeight;
         try
         {
-            aimWeight = AimingWeight(pwa);
+            ref float gameAimWeight = ref AimingWeight(pwa);
+            float limit = ReadyStance.LowReadyAdsLimit;
+            if (gameAimWeight > limit && limit < 1f)
+            {
+                // The first-person camera reads this after the weapon pass. Let the gun rise before it reaches the scope.
+                gameAimWeight = limit;
+            }
+            aimWeight = gameAimWeight;
         }
         catch
         {

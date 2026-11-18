@@ -43,13 +43,15 @@ internal static class ReadyStance
     // Separate blends allow a direct high-to-low transition without a step in pitch.
     private static float _low;
     private static float _high;
+    private static float _lowBodyFollow;
     private static int _stanceFrame = -2;
     private static Stamina _recoveringHands;
-    internal static float ReadyPitch => _aimFade * (
-        Mathf.SmoothStep(0f, 1f, _low) * FreeAimPlugin.LowReadyPitch.Value
-        - Mathf.SmoothStep(0f, 1f, _high) * FreeAimPlugin.HighReadyPitch.Value);
+    private static float LowPitchBlend => Mathf.SmoothStep(0f, 1f, _low);
+    internal static float ReadyPitch => LowPitchBlend * FreeAimPlugin.LowReadyPitch.Value
+        - _aimFade * Mathf.SmoothStep(0f, 1f, _high) * FreeAimPlugin.HighReadyPitch.Value;
+    internal static float LowReadyAdsLimit { get; private set; } = 1f;
     internal static float BodyFollowMultiplier => Mathf.Lerp(1f, FreeAimPlugin.ReadyBodyFollow.Value,
-        Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(_low + _high)) * _aimFade);
+        Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(_lowBodyFollow + _high)) * _aimFade);
 
     internal static float ScaleArmRecovery(float rate, Stamina stamina) =>
         stamina == _recoveringHands && _requested == ReadyPose.Low && Time.frameCount - _stanceFrame <= 1
@@ -249,7 +251,7 @@ internal static class ReadyStance
             _playerId = id;
             _requested = ReadyPose.None;
             Exhausted = false;
-            _raise = _low = _high = 0f;
+            _raise = _low = _high = _lowBodyFollow = 0f;
             _aimFade = 1f;
             _wasBraced = false;
             _baseWeight = 0f;
@@ -280,24 +282,32 @@ internal static class ReadyStance
 
         bool pointed = _requested is ReadyPose.Low or ReadyPose.High;
         bool canPose = FreeAimPlugin.StanceEnabled.Value && holdingGun && !sprinting;
-        if (pointed)
-        {
-            var state = player.CurrentManagedState;
-            canPose &= PointedReadyEnabled && state != null && AimModel.IsPlainState(state.Name)
-                && player.BtrState == EPlayerBtrState.Outside;
-        }
-        Current = canPose ? _requested : ReadyPose.None;
+        var state = player.CurrentManagedState;
+        bool canPoint = canPose && PointedReadyEnabled && state != null && AimModel.IsPlainState(state.Name)
+            && player.BtrState == EPlayerBtrState.Outside;
+        Current = (pointed ? canPoint : canPose) ? _requested : ReadyPose.None;
+        bool aiming = pwa.IsAiming;
+        bool busy = (Engaged || (canPoint && _low > 0f))
+            && player.HandsController is Player.FirearmController busyFc && HandsBusy(busyFc);
         // Keep the request while the hands are busy or a high/low stance is interrupted by ADS.
-        Suspended = Engaged && ((pointed && pwa.IsAiming)
-            || (player.HandsController is Player.FirearmController busyFc && HandsBusy(busyFc)));
+        Suspended = Engaged && ((pointed && aiming) || busy);
         HandleShoulder();
 
         float raiseTime = Mathf.Max(0.05f, FreeAimPlugin.StanceRaiseTime.Value * WeaponProfile.RaiseScale);
         float step = dt / raiseTime;
         _raise = Mathf.MoveTowards(_raise, Braced && !Suspended ? 1f : 0f, step);
-        _low = Mathf.MoveTowards(_low, Current == ReadyPose.Low && !Suspended ? 1f : 0f, step);
+        bool lowReady = Current == ReadyPose.Low && !Suspended;
+        float lowTarget = lowReady ? 1f : 0f;
+        bool raisingLow = _low > 0f && !lowReady && canPoint && !busy;
+        // Keep the standard timing for lowering, body follow, and interruptions such as sprint/reload.
+        float lowStep = raisingLow
+            ? dt / Mathf.Max(0.05f, FreeAimPlugin.LowReadyRaiseTime.Value * WeaponProfile.RaiseScale)
+            : step;
+        _low = Mathf.MoveTowards(_low, lowTarget, lowStep);
+        _lowBodyFollow = Mathf.MoveTowards(_lowBodyFollow, lowTarget, step);
         _high = Mathf.MoveTowards(_high, Current == ReadyPose.High && !Suspended ? 1f : 0f, step);
-        _aimFade = Mathf.MoveTowards(_aimFade, pwa.IsAiming ? 0f : 1f, dt / 0.12f);
+        LowReadyAdsLimit = raisingLow && aiming ? 1f - LowPitchBlend : 1f;
+        _aimFade = Mathf.MoveTowards(_aimFade, aiming ? 0f : 1f, dt / 0.12f);
         _stanceFrame = Time.frameCount;
         _recoveringHands = Current == ReadyPose.Low && !Suspended ? hands : null;
         // The PWA-pass pose is built on the right-shoulder weapon frame. While the game's left-shoulder
