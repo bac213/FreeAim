@@ -175,6 +175,8 @@ Outside Assembly-CSharp:
 - `BepInEx.Configuration.KeyboardShortcut.IsDown()` returns false while **any** other key is held (`ModifierKeyTest` checks every supported key). Use `ReadyStance.IsPressedThisFrame`/`IsHeld` instead.
 - ConfigurationManager is installed (`BepInEx/plugins/spt/ConfigurationManager`), so all config is editable with F12.
 
+- `EFT.Animations.Spring` (`HandsRotation`, `HandsPosition`, `CameraRotation`, ...): `Current` relaxes toward `Zero` and `Get()` = `Zero + Current`. The dynamic part is `Current − Zero`, not `Current`. `Zero` holds static pose angles (`RotationZeroSum` + active pose blends) and can stay non-zero after item use until the next weapon init (0.1.2 bug: gun stuck pointing up after eating).
+
 ## Sway measurements (0.0.16 probe, 2026-11-17, right shoulder, flat ground, full arm stamina)
 Raw logs and scripts: `C:/Users/Administrator/scratch/sway/` (`run3.txt`, `analyse2.py` = per-condition mean ± std of the 1 Hz samples, sprint/ADS/transitions dropped). Degrees, P+ = muzzle down, Y+ = right. "Muzzle" = muzzle vs screen centre minus the free-aim offset.
 

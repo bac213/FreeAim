@@ -69,7 +69,7 @@ internal static class SwayProbe
         var hands = pwa.HandsContainer;
         Vector3 sway = hands.SwaySpring.Value;
         float displacement = DisplacementStr(pwa) * (pwa.IsAiming ? pwa.AimingDisplacementStr : 1f);
-        Vector3 dyn = hands.HandsRotation.Current + displacement * new Vector3(sway.x, 0f, sway.z) + sway;
+        Vector3 dyn = (hands.HandsRotation.Current - hands.HandsRotation.Zero) + displacement * new Vector3(sway.x, 0f, sway.z) + sway;
         // hands frame: x = pitch (+ down), y = yaw (+ right)
         Source.Add(new Vector2(dyn.x, dyn.y), dt);
     }

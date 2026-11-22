@@ -181,7 +181,9 @@ internal static class AimModel
     /// <summary>Body sway input D: the dynamic part of the game's HandsRotation spring (yaw, pitch).</summary>
     internal static Vector2 ReadGameSway(ProceduralWeaponAnimation pwa)
     {
-        Vector3 c = pwa.HandsContainer.HandsRotation.Current; // x = pitch (+ down), y = yaw (+ right)
+        // Spring.Current relaxes toward Zero and the game applies Zero + Current: the dynamic part is Current - Zero.
+        var spring = pwa.HandsContainer.HandsRotation;
+        Vector3 c = spring.Current - spring.Zero; // x = pitch (+ down), y = yaw (+ right)
         return new Vector2(c.y, c.x);
     }
 
@@ -507,7 +509,8 @@ internal static class AimModel
         Vector3 sway = hands.SwaySpring.Value;
         float displacement = DisplacementStr(pwa) * (pwa.IsAiming ? pwa.AimingDisplacementStr : 1f);
         Vector3 swayPart = displacement * new Vector3(sway.x, 0f, sway.z) + sway;
-        Vector3 current = hands.HandsRotation.Current;
+        // dynamic part only: Current rests at Zero (static pose angles from blends, e.g. after using an item)
+        Vector3 current = hands.HandsRotation.Current - hands.HandsRotation.Zero;
         Vector3 removed = new Vector3(current.x, current.y, 0f) + swayPart;
         if (removed.sqrMagnitude < 1e-8f)
         {
