@@ -21,7 +21,7 @@ public class FreeAimPlugin : BaseUnityPlugin
 {
     public const string PluginGuid = "com.spt.freeaim.client";
     public const string PluginName = "FreeAim.Client";
-    public const string PluginVersion = "0.1.2";
+    public const string PluginVersion = "0.1.3";
 
     internal static ManualLogSource Log;
 
