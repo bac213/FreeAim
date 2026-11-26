@@ -70,22 +70,35 @@ internal static class WeaponMass
             }
 
             // own masses: total minus the placed parts directly in its slots
-            AddPart(weapon, root.InverseTransformPoint(weaponView.position));
+            Vector3 pivot = hands.RotationCenter;
+            Vector3 weaponOrigin = root.InverseTransformPoint(weaponView.position);
+            AddPart(weapon, weaponOrigin);
             foreach (var pair in _viewOwner)
             {
-                AddPart(pair.Value, root.InverseTransformPoint(pair.Key.position));
+                Vector3 origin = root.InverseTransformPoint(pair.Key.position);
+                if ((origin - pivot).sqrMagnitude > 9f)
+                {
+                    origin = weaponOrigin;
+                }
+                AddPart(pair.Value, origin);
             }
 
-            // mesh centres: each renderer belongs to the nearest part view above it, else to the receiver
+            // mesh centres: each renderer belongs to the nearest part view above it, else to the receiver.
+            // Use local mesh bounds + live transform instead of Renderer.bounds: Unity freezes Renderer.bounds
+            // in world space when a renderer is disabled or culled, causing distances to grow as the player moves.
             foreach (Renderer r in weaponView.GetComponentsInChildren<Renderer>(false))
             {
-                if (r is not MeshRenderer && r is not SkinnedMeshRenderer)
+                if (!r.enabled || !TryGetMeshBounds(r, out Bounds localBounds, out Transform space, out Vector3 size))
                 {
                     continue;
                 }
-                Bounds b = r.bounds;
-                float volume = b.size.x * b.size.y * b.size.z;
-                if (volume <= 1e-9f || b.size.magnitude > 1.5f)
+                float volume = size.x * size.y * size.z;
+                if (volume <= 1e-9f || size.magnitude > 1.5f)
+                {
+                    continue;
+                }
+                Vector3 localCenter = root.InverseTransformPoint(space.TransformPoint(localBounds.center));
+                if ((localCenter - pivot).sqrMagnitude > 9f)
                 {
                     continue;
                 }
@@ -100,13 +113,12 @@ internal static class WeaponMass
                 }
                 if (_parts.TryGetValue(owner, out Part part))
                 {
-                    part.Sum += root.InverseTransformPoint(b.center) * volume;
+                    part.Sum += localCenter * volume;
                     part.Volume += volume;
                     _parts[owner] = part;
                 }
             }
 
-            Vector3 pivot = hands.RotationCenter;
             Vector3 bore = root.InverseTransformDirection(fireport.TransformDirection(pwa.ShotDirection)).normalized;
             float j = 0f, moment = 0f, mass = 0f;
             foreach (var part in _parts.Values)
@@ -153,5 +165,46 @@ internal static class WeaponMass
             }
         }
         _parts[item] = new Part { Mass = Mathf.Max(0f, own), Origin = origin };
+    }
+
+    private static bool TryGetMeshBounds(Renderer r, out Bounds bounds, out Transform space, out Vector3 size)
+    {
+        if (r is MeshRenderer)
+        {
+            var filter = r.GetComponent<MeshFilter>();
+            if (filter == null || filter.sharedMesh == null)
+            {
+                bounds = default;
+                space = null;
+                size = default;
+                return false;
+            }
+            bounds = filter.sharedMesh.bounds;
+            space = r.transform;
+        }
+        else if (r is SkinnedMeshRenderer skinned)
+        {
+            bounds = skinned.localBounds;
+            space = skinned.rootBone != null ? skinned.rootBone : r.transform;
+        }
+        else
+        {
+            bounds = default;
+            space = null;
+            size = default;
+            return false;
+        }
+
+        string name = r.name.ToLowerInvariant();
+        if (name.Contains("beam") || name.Contains("laser") || name.Contains("flash")
+            || name.Contains("light_cone") || name.Contains("muzzlejet"))
+        {
+            size = default;
+            return false;
+        }
+
+        Vector3 scale = space.lossyScale;
+        size = Vector3.Scale(bounds.size, new Vector3(Mathf.Abs(scale.x), Mathf.Abs(scale.y), Mathf.Abs(scale.z)));
+        return true;
     }
 }
